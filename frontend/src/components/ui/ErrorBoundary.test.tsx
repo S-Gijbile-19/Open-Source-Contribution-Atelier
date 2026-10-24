@@ -1,11 +1,19 @@
+
 import React from "react";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { logger } from "../../lib/logger";
+import * as Sentry from "@sentry/react";
 
-// Mock the logger module
 vi.mock("../../lib/logger", () => ({
   logger: {
     error: vi.fn(),
@@ -14,7 +22,10 @@ vi.mock("../../lib/logger", () => ({
   },
 }));
 
-// A component that throws an error when rendered
+vi.mock("@sentry/react", () => ({
+  captureException: vi.fn(),
+}));
+
 const ProblematicComponent = () => {
   throw new Error("Test render error");
 };
@@ -27,15 +38,21 @@ describe("ErrorBoundary", () => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
 
-    // Mock window.location.reload
-    // @ts-expect-error - Mock window.location for testing
+    // Mock page navigation methods for testing.
+    // @ts-expect-error - Replace location with a test mock.
     delete window.location;
 
-    window.location = { ...originalLocation, reload: vi.fn() } as any;
+    window.location = {
+      ...originalLocation,
+      reload: vi.fn(),
+      assign: vi.fn(),
+    } as any;
   });
 
   afterEach(() => {
+    cleanup();
     window.location = originalLocation as any;
+    vi.restoreAllMocks();
   });
 
   it("renders children normally when there is no error", () => {
@@ -46,11 +63,12 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.getByTestId("child")).toBeInTheDocument();
-    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Something went wrong"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders default fallback UI and logs the error when a child throws", () => {
-    // Suppress console.error output during test as we expect errors
+  it("renders the default fallback and reports the error", () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -61,25 +79,46 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     expect(
-      screen.getByText(/We've encountered an unexpected error/i),
+      screen.getByText("Something went wrong"),
     ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/An unexpected error occurred/i),
+    ).toBeInTheDocument();
+
+    // Detailed error messages should be visible in development.
+    expect(
+      screen.getByText(/Test render error/i),
+    ).toBeInTheDocument();
+
     expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
       expect.any(Error),
       expect.any(Object),
     );
 
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          componentStack: expect.anything(),
+        }),
+      }),
+    );
+
     consoleErrorSpy.mockRestore();
   });
 
-  it("renders custom fallback UI when a child throws and custom fallback prop is provided", () => {
+  it("renders a custom fallback when one is provided", () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
+
     const customFallback = (
-      <div data-testid="custom-fallback">Custom Error Page</div>
+      <div data-testid="custom-fallback">
+        Custom Error Page
+      </div>
     );
 
     render(
@@ -88,18 +127,24 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    expect(screen.getByTestId("custom-fallback")).toBeInTheDocument();
-    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("custom-fallback"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByText("Something went wrong"),
+    ).not.toBeInTheDocument();
+
     expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
 
     consoleErrorSpy.mockRestore();
   });
 
-  it("reloads the page when 'Reload Application' button is clicked in the default fallback UI", async () => {
+  it("shows the Try Again and Go Home buttons", () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    const user = userEvent.setup();
 
     render(
       <ErrorBoundary>
@@ -107,14 +152,50 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    const reloadButton = screen.getByRole("button", {
-      name: /reload application/i,
-    });
-    expect(reloadButton).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
 
-    await user.click(reloadButton);
-    expect(window.location.reload).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: /go home/i }),
+    ).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
+it("does not reload the page when Try Again is clicked", () => {
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  render(
+    <ErrorBoundary>
+      <ProblematicComponent />
+    </ErrorBoundary>,
+  );
+
+  screen.getByRole("button", { name: /try again/i }).click();
+
+  expect(window.location.reload).not.toHaveBeenCalled();
+
+  consoleErrorSpy.mockRestore();
+});
+
+ it("navigates to the home page when Go Home is clicked", () => {
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  render(
+    <ErrorBoundary>
+      <ProblematicComponent />
+    </ErrorBoundary>,
+  );
+
+  screen.getByRole("button", { name: /go home/i }).click();
+
+  expect(window.location.assign).toHaveBeenCalledWith("/");
+
+  consoleErrorSpy.mockRestore();
+});
+
 });
