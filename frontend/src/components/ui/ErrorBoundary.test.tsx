@@ -1,7 +1,6 @@
 
 import React from "react";
-import { render, screen, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, cleanup, act } from "@testing-library/react";
 import {
   describe,
   it,
@@ -87,7 +86,6 @@ describe("ErrorBoundary", () => {
       screen.getByText(/An unexpected error occurred/i),
     ).toBeInTheDocument();
 
-    // Detailed error messages should be visible in development.
     expect(
       screen.getByText(/Test render error/i),
     ).toBeInTheDocument();
@@ -162,40 +160,73 @@ describe("ErrorBoundary", () => {
 
     consoleErrorSpy.mockRestore();
   });
-it("does not reload the page when Try Again is clicked", () => {
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
 
-  render(
-    <ErrorBoundary>
-      <ProblematicComponent />
-    </ErrorBoundary>,
-  );
+  it("recovers when Try Again is clicked without reloading the page", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-  screen.getByRole("button", { name: /try again/i }).click();
+    let shouldThrow = true;
 
-  expect(window.location.reload).not.toHaveBeenCalled();
+    const TemporaryErrorComponent = () => {
+      if (shouldThrow) {
+        throw new Error("Temporary render error");
+      }
 
-  consoleErrorSpy.mockRestore();
-});
+      return (
+        <div data-testid="recovered-child">
+          Recovered successfully
+        </div>
+      );
+    };
 
- it("navigates to the home page when Go Home is clicked", () => {
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+    render(
+      <ErrorBoundary>
+        <TemporaryErrorComponent />
+      </ErrorBoundary>,
+    );
 
-  render(
-    <ErrorBoundary>
-      <ProblematicComponent />
-    </ErrorBoundary>,
-  );
+    expect(
+      screen.getByText("Something went wrong"),
+    ).toBeInTheDocument();
 
-  screen.getByRole("button", { name: /go home/i }).click();
+    // Allow the child to render successfully after the reset.
+    shouldThrow = false;
 
-  expect(window.location.assign).toHaveBeenCalledWith("/");
+    act(() => {
+      screen.getByRole("button", { name: /try again/i }).click();
+    });
 
-  consoleErrorSpy.mockRestore();
-});
+    expect(
+      screen.getByTestId("recovered-child"),
+    ).toBeInTheDocument();
 
+    expect(
+      screen.queryByText("Something went wrong"),
+    ).not.toBeInTheDocument();
+
+    expect(window.location.reload).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("navigates to the home page when Go Home is clicked", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    render(
+      <ErrorBoundary>
+        <ProblematicComponent />
+      </ErrorBoundary>,
+    );
+
+    act(() => {
+      screen.getByRole("button", { name: /go home/i }).click();
+    });
+
+    expect(window.location.assign).toHaveBeenCalledWith("/");
+
+    consoleErrorSpy.mockRestore();
+  });
 });
