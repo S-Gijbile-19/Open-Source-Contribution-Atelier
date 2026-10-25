@@ -1,4 +1,3 @@
-
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ProgressRing } from "./ProgressRing";
 
@@ -10,7 +9,6 @@ const meta = {
     percentage: 50,
     size: 80,
     color: "#6c63ff",
-    label: "50%",
   },
   argTypes: {
     percentage: {
@@ -35,27 +33,41 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {};
+const withPercentageLabel = (
+  percentage: number,
+  args: Partial<Story["args"]> = {},
+): Story => ({
+  args: {
+    ...args,
+    percentage,
+    label: `${percentage}%`,
+  },
+  render: (args) => (
+    <ProgressRing
+      {...args}
+      label={args.label === undefined ? undefined : `${args.percentage ?? 0}%`}
+    />
+  ),
+});
 
-export const Empty: Story = {
-  args: { percentage: 0, label: "0%" },
+export const Default: Story = {
+  render: (args) => (
+    <ProgressRing
+      {...args}
+      label={args.label === undefined ? undefined : `${args.percentage ?? 0}%`}
+    />
+  ),
 };
 
-export const Complete: Story = {
-  args: { percentage: 100, label: "100%" },
-};
+export const Empty: Story = withPercentageLabel(0);
 
-export const Small: Story = {
-  args: { size: 48, label: "50%" },
-};
+export const Complete: Story = withPercentageLabel(100);
 
-export const Medium: Story = {
-  args: { size: 80, label: "50%" },
-};
+export const Small: Story = withPercentageLabel(50, { size: 48 });
 
-export const Large: Story = {
-  args: { size: 120, label: "50%" },
-};
+export const Medium: Story = withPercentageLabel(50, { size: 80 });
+
+export const Large: Story = withPercentageLabel(50, { size: 120 });
 
 export const WithLabel: Story = {
   args: { percentage: 65, label: "65%" },
@@ -65,17 +77,16 @@ export const WithoutLabel: Story = {
   args: { percentage: 65, label: undefined },
 };
 
-export const Static: Story = {
-  args: { percentage: 50, label: "50%" },
-};
+export const Static: Story = withPercentageLabel(50);
 
 export const Animated: Story = {
-  args: { percentage: 50, label: "50%" },
+  ...withPercentageLabel(50),
   render: (args) => {
     const size = args.size ?? 80;
+    const percentage = args.percentage ?? 0;
     const circumference = 2 * Math.PI * ((size - 8) / 2);
     const initialOffset =
-      circumference - (args.percentage / 100) * circumference;
+      circumference - (percentage / 100) * circumference;
 
     return (
       <>
@@ -98,7 +109,10 @@ export const Animated: Story = {
           `}
         </style>
         <div className="progress-ring-story-animated">
-          <ProgressRing {...args} />
+          <ProgressRing
+            {...args}
+            label={args.label === undefined ? undefined : `${percentage}%`}
+          />
         </div>
       </>
     );
@@ -106,7 +120,7 @@ export const Animated: Story = {
 };
 
 export const DarkMode: Story = {
-  args: { percentage: 70, label: "70%" },
+  ...withPercentageLabel(70),
   decorators: [
     (Story) => (
       <div
