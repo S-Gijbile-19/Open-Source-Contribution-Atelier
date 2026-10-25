@@ -45,8 +45,7 @@ const withPercentageLabel = (
   render: (args) => (
     <ProgressRing
       {...args}
-      label={args.label === undefined ? undefined : `${args.percentage ?? 0}%`}
-    />
+      label={args.label} />
   ),
 });
 
@@ -54,8 +53,7 @@ export const Default: Story = {
   render: (args) => (
     <ProgressRing
       {...args}
-      label={args.label === undefined ? undefined : `${args.percentage ?? 0}%`}
-    />
+      label={args.label} />
   ),
 };
 
@@ -111,8 +109,7 @@ export const Animated: Story = {
         <div className="progress-ring-story-animated">
           <ProgressRing
             {...args}
-            label={args.label === undefined ? undefined : `${percentage}%`}
-          />
+            label={args.label} />
         </div>
       </>
     );
